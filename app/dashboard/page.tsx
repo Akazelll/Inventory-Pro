@@ -1,233 +1,94 @@
 import { createClient } from "@/utils/supabase/server";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatsCards } from "@/components/dashboard/stats-card";
+import { OverviewChart } from "@/components/dashboard/overview-chart";
+import { RecentActivity } from "@/components/dashboard/recent-activity";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import {
-  Activity,
-  AlertTriangle,
-  CreditCard,
-  Package,
-  TrendingDown,
-  TrendingUp,
-} from "lucide-react";
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { ArrowRight, History } from "lucide-react";
 
-// Helper untuk format Rupiah
-const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-};
+// Memastikan data selalu fresh
+export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
 
-  // 1. Fetch Data secara Paralel (untuk performa)
-  // Kita mengambil data yang diperlukan saja untuk menghitung statistik
-  const [productsRes, transactionsRes] = await Promise.all([
-    supabase
-      .from("products")
-      .select("id, price, current_stock, min_stock_level"),
-    supabase
-      .from("inventory_transactions")
-      .select(
-        `
-        id, 
-        type, 
-        quantity, 
-        created_at, 
-        products (name), 
-        profiles (full_name)
-      `,
-      )
-      .order("created_at", { ascending: false })
-      .limit(5),
+  // 1. Fetch Stats & Chart Data secara paralel (Lebih Cepat)
+  const [statsRes, chartRes, activityRes] = await Promise.all([
+    supabase.rpc("get_dashboard_stats"),
+    supabase.rpc("get_inventory_chart_data"),
+    supabase.rpc("get_recent_transactions"), // Kita buat RPC sederhana atau query biasa
   ]);
 
-  const products = productsRes.data || [];
-  const recentTransactions = transactionsRes.data || [];
-
-  // 2. Hitung Statistik (Business Logic)
-
-  // A. Total Produk
-  const totalProducts = products.length;
-
-  // B. Total Stok (Jumlah item fisik)
-  const totalStockItems = products.reduce(
-    (acc, curr) => acc + curr.current_stock,
-    0,
-  );
-
-  // C. Total Nilai Aset (Harga x Stok)
-  const totalAssetValue = products.reduce(
-    (acc, curr) => acc + curr.price * curr.current_stock,
-    0,
-  );
-
-  // D. Stok Menipis (Logic: current <= min)
-  const lowStockCount = products.filter(
-    (p) => p.current_stock <= p.min_stock_level,
-  ).length;
+  // Fallback jika RPC recent transactions belum dibuat, gunakan query builder:
+  const { data: recentTransactions } = await supabase
+    .from("inventory_transactions")
+    .select(
+      `
+      id, quantity, type, created_at,
+      products ( name ),
+      profiles ( full_name )
+    `,
+    )
+    .order("created_at", { ascending: false })
+    .limit(5);
 
   return (
-    <div className='flex-1 space-y-4'>
-      <div className='flex items-center justify-between space-y-2'>
-        <h2 className='text-3xl font-bold tracking-tight'>Dashboard</h2>
+    <div className='space-y-8'>
+      <div className='flex flex-col md:flex-row md:items-center justify-between gap-4'>
+        <div>
+          <h1 className='text-3xl font-bold tracking-tight'>
+            Dashboard Overview
+          </h1>
+          <p className='text-muted-foreground'>
+            Pantau kesehatan inventaris Anda secara real-time.
+          </p>
+        </div>
+        <Link href='/dashboard/inventory/new'>
+          <Button className='shadow-md'>Buat Transaksi Baru</Button>
+        </Link>
       </div>
 
-      {/* --- STATISTIC CARDS --- */}
-      <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-4'>
-        {/* Widget 1: Total Nilai Aset */}
-        <Card>
-          <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-            <CardTitle className='text-sm font-medium'>
-              Total Nilai Aset
-            </CardTitle>
-            <CreditCard className='h-4 w-4 text-muted-foreground' />
-          </CardHeader>
-          <CardContent>
-            <div className='text-2xl font-bold'>
-              {formatCurrency(totalAssetValue)}
-            </div>
-            <p className='text-xs text-muted-foreground'>
-              Estimasi valuasi stok saat ini
-            </p>
-          </CardContent>
-        </Card>
+      {/* Stats Section */}
+      <StatsCards stats={statsRes.data || {}} />
 
-        {/* Widget 2: Total Produk */}
-        <Card>
-          <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-            <CardTitle className='text-sm font-medium'>Total Produk</CardTitle>
-            <Package className='h-4 w-4 text-muted-foreground' />
-          </CardHeader>
-          <CardContent>
-            <div className='text-2xl font-bold'>{totalProducts}</div>
-            <p className='text-xs text-muted-foreground'>
-              {totalStockItems} unit total item fisik
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Widget 3: Stok Menipis */}
-        <Card>
-          <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-            <CardTitle className='text-sm font-medium'>Stok Menipis</CardTitle>
-            <AlertTriangle className='h-4 w-4 text-orange-500' />
-          </CardHeader>
-          <CardContent>
-            <div
-              className={`text-2xl font-bold ${lowStockCount > 0 ? "text-destructive" : ""}`}
-            >
-              {lowStockCount}
-            </div>
-            <p className='text-xs text-muted-foreground'>
-              Produk di bawah level minimum
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Widget 4: Aktivitas */}
-        <Card>
-          <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-            <CardTitle className='text-sm font-medium'>Aktivitas</CardTitle>
-            <Activity className='h-4 w-4 text-muted-foreground' />
-          </CardHeader>
-          <CardContent>
-            <div className='text-2xl font-bold'>
-              +{recentTransactions.length}
-            </div>
-            <p className='text-xs text-muted-foreground'>
-              Transaksi baru-baru ini
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* --- RECENT TRANSACTIONS TABLE --- */}
-      <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-7'>
-        <Card className='col-span-4 lg:col-span-7'>
+      <div className='grid gap-6 md:grid-cols-2 lg:grid-cols-7'>
+        {/* Chart Section - Dinamis dari SQL */}
+        <Card className='col-span-4 border-none shadow-sm'>
           <CardHeader>
-            <CardTitle>Transaksi Terakhir</CardTitle>
+            <CardTitle>Arus Barang</CardTitle>
+            <CardDescription>
+              Perbandingan stok masuk dan keluar dalam 7 hari terakhir.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className='pl-2'>
+            <OverviewChart data={chartRes.data || []} />
+          </CardContent>
+        </Card>
+
+        {/* Recent Activity Section - Dinamis dari Query */}
+        <Card className='col-span-3 border-none shadow-sm'>
+          <CardHeader className='flex flex-row items-center justify-between'>
+            <div className='space-y-1'>
+              <CardTitle className='flex items-center gap-2'>
+                <History className='h-4 w-4 text-primary' /> Aktivitas Terbaru
+              </CardTitle>
+              <CardDescription>Log pergerakan barang terakhir.</CardDescription>
+            </div>
+            <Link href='/dashboard/inventory'>
+              <Button variant='ghost' size='icon'>
+                <ArrowRight className='h-4 w-4' />
+              </Button>
+            </Link>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Produk</TableHead>
-                  <TableHead>Tipe</TableHead>
-                  <TableHead>Jumlah</TableHead>
-                  <TableHead>Oleh</TableHead>
-                  <TableHead className='text-right'>Waktu</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recentTransactions.length === 0 ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={5}
-                      className='text-center h-24 text-muted-foreground'
-                    >
-                      Belum ada transaksi.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  recentTransactions.map((trx) => (
-                    <TableRow key={trx.id}>
-                      <TableCell className='font-medium'>
-                        {/* @ts-ignore: join result */}
-                        {trx.products?.name || "Produk dihapus"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            trx.type === "IN"
-                              ? "default" // Hitam/Putih (Masuk)
-                              : trx.type === "OUT"
-                                ? "destructive" // Merah (Keluar)
-                                : "secondary" // Abu-abu (Adjustment)
-                          }
-                          className='flex w-fit items-center gap-1'
-                        >
-                          {trx.type === "IN" && (
-                            <TrendingUp className='h-3 w-3' />
-                          )}
-                          {trx.type === "OUT" && (
-                            <TrendingDown className='h-3 w-3' />
-                          )}
-                          {trx.type}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {trx.type === "OUT" ? "-" : "+"}
-                        {trx.quantity}
-                      </TableCell>
-                      <TableCell>
-                        {/* @ts-ignore: join result */}
-                        {trx.profiles?.full_name || "Unknown"}
-                      </TableCell>
-                      <TableCell className='text-right text-muted-foreground'>
-                        {new Date(trx.created_at).toLocaleDateString("id-ID", {
-                          day: "numeric",
-                          month: "short",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+            <RecentActivity transactions={recentTransactions || []} />
           </CardContent>
         </Card>
       </div>

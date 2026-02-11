@@ -1,35 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import { Bell, AlertCircle, CheckCheck, Inbox } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { logout } from "@/app/login/actions";
-import {
-  User,
-  Settings,
-  LogOut,
-  Bell,
-  AlertCircle,
-  CheckCheck,
-  Inbox,
-} from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { id } from "date-fns/locale";
 
-// --- KOMPONEN NOTIFIKASI (Internal) ---
-function NotificationBell() {
+export function NotificationBell() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const supabase = createClient();
 
@@ -93,7 +80,7 @@ function NotificationBell() {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent
-        className='w-80 p-0 shadow-xl border-none mt-2'
+        className='w-80 p-0 shadow-xl border-none'
         align='end'
       >
         <div className='flex items-center justify-between p-4 bg-muted/30'>
@@ -114,14 +101,14 @@ function NotificationBell() {
 
         <DropdownMenuSeparator className='m-0' />
 
-        <ScrollArea className='h-[300px]'>
+        <ScrollArea className='h-[350px]'>
           {notifications.length === 0 ? (
             <div className='flex flex-col items-center justify-center py-12 px-4 text-center'>
               <div className='h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3'>
                 <Inbox className='h-6 w-6 text-muted-foreground/50' />
               </div>
               <p className='text-xs font-medium text-muted-foreground'>
-                Tidak ada stok kritis saat ini.
+                Semua aman! Tidak ada stok kritis.
               </p>
             </div>
           ) : (
@@ -135,7 +122,7 @@ function NotificationBell() {
                   <div className='mt-1 h-8 w-8 shrink-0 rounded-full bg-rose-50 flex items-center justify-center'>
                     <AlertCircle className='h-4 w-4 text-rose-600' />
                   </div>
-                  <div className='flex flex-col gap-1'>
+                  <div className='flex flex-col gap-1 overflow-hidden'>
                     <p className='text-sm font-bold leading-none'>{n.title}</p>
                     <p className='text-xs text-muted-foreground leading-snug line-clamp-2'>
                       {n.message}
@@ -152,76 +139,18 @@ function NotificationBell() {
             </div>
           )}
         </ScrollArea>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
 
-// --- KOMPONEN UTAMA ---
-export function UserNav({ email, role }: { email: string; role: string }) {
-  return (
-    <div className='flex items-center gap-3'>
-      {/* Panggil Bell di sini agar sejajar dengan Avatar */}
-      <NotificationBell />
-
-      <div className='h-4 w-[1px] bg-border mx-1' />
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+        <DropdownMenuSeparator className='m-0' />
+        <div className='p-2 bg-muted/10'>
           <Button
             variant='ghost'
-            className='relative h-9 w-9 rounded-full border hover:bg-muted transition-all'
+            className='w-full text-[11px] h-8 font-medium text-muted-foreground'
+            disabled
           >
-            <Avatar className='h-9 w-9'>
-              <AvatarImage src='' alt={email} />
-              <AvatarFallback className='bg-primary/10 text-primary font-bold text-xs'>
-                {email.substring(0, 2).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
+            Lihat semua pemberitahuan
           </Button>
-        </DropdownMenuTrigger>
-
-        <DropdownMenuContent className='w-56' align='end' forceMount>
-          <DropdownMenuLabel className='font-normal'>
-            <div className='flex flex-col space-y-1'>
-              <p className='text-sm font-semibold leading-none truncate'>
-                {email}
-              </p>
-              <p className='text-[10px] font-bold leading-none text-muted-foreground uppercase tracking-widest'>
-                {role}
-              </p>
-            </div>
-          </DropdownMenuLabel>
-
-          <DropdownMenuSeparator />
-
-          <DropdownMenuGroup>
-            <Link href='/dashboard/settings'>
-              <DropdownMenuItem className='cursor-pointer'>
-                <User className='mr-2 h-4 w-4 text-muted-foreground' />
-                <span>Profile</span>
-              </DropdownMenuItem>
-            </Link>
-
-            <Link href='/dashboard/settings'>
-              <DropdownMenuItem className='cursor-pointer'>
-                <Settings className='mr-2 h-4 w-4 text-muted-foreground' />
-                <span>Settings</span>
-              </DropdownMenuItem>
-            </Link>
-          </DropdownMenuGroup>
-
-          <DropdownMenuSeparator />
-
-          <DropdownMenuItem
-            onClick={() => logout()}
-            className='text-red-600 focus:text-red-700 focus:bg-red-50 cursor-pointer'
-          >
-            <LogOut className='mr-2 h-4 w-4' />
-            <span>Log out</span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
