@@ -50,9 +50,6 @@ export default async function DashboardPage() {
             Pantau kesehatan inventaris Anda secara real-time.
           </p>
         </div>
-        <Link href='/dashboard/inventory/new'>
-          <Button className='shadow-md'>Buat Transaksi Baru</Button>
-        </Link>
       </div>
 
       {/* Stats Section */}

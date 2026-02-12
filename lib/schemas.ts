@@ -2,6 +2,7 @@ import { z } from "zod";
 
 // Validasi input produk
 export const productSchema = z.object({
+  barcode: z.string().nullable().optional(),
   name: z.string().min(2, "Nama produk minimal 2 karakter"),
   sku: z.string().min(3, "SKU minimal 3 karakter"),
   category_id: z.string().uuid("Kategori wajib dipilih"),

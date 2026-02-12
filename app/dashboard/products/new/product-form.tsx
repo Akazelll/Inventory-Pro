@@ -120,9 +120,9 @@ export function ProductForm({
                   <div className='flex gap-2'>
                     <Input
                       id='barcode'
-                      name='barcode' // Supaya terbaca di Server Action
+                      name='barcode' // <--- PASTIKAN ATRIBUT INI ADA
                       placeholder='Klik Scan atau ketik barcode...'
-                      value={barcode}
+                      value={barcode} // State dari scanner
                       onChange={(e) => setBarcode(e.target.value)}
                       className='font-mono bg-white h-11 border-primary/20 focus-visible:ring-primary'
                     />
