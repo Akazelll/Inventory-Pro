@@ -74,3 +74,8 @@ export const passwordSchema = z
     message: "Password tidak cocok",
     path: ["confirmPassword"],
   });
+
+export const categorySchema = z.object({
+  name: z.string().min(2, "Nama kategori minimal 2 karakter"),
+  description: z.string().optional(),
+});

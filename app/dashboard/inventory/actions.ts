@@ -23,7 +23,7 @@ export async function createTransaction(
 ): Promise<State> {
   const supabase = await createClient();
 
-  // 1. Cek User
+  // 1. Cek User yang sedang login (untuk audit trail / pencatat transaksi)
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -50,7 +50,7 @@ export async function createTransaction(
 
   const { product_id, type, quantity, notes } = validatedFields.data;
 
-  // 3. Simpan Transaksi (Update Stok)
+  // 3. Simpan Transaksi (Update Stok via RPC)
   const { error } = await supabase.rpc("create_inventory_transaction", {
     p_product_id: product_id,
     p_type: type,
@@ -64,55 +64,86 @@ export async function createTransaction(
     return { success: false, message: error.message };
   }
 
-  // --- LOGIKA NOTIFIKASI (EMAIL & NAVBAR) ---
+  // ============================================================
+  // LOGIKA NOTIFIKASI & EMAIL (BROADCAST KE ADMIN & MANAGER)
+  // ============================================================
 
   // Kita hanya cek notifikasi jika barang KELUAR (stok berkurang)
   if (type === "OUT") {
-    // Ambil data produk TERBARU setelah dikurangi
+    // A. Ambil data produk TERBARU setelah dikurangi
     const { data: product } = await supabase
       .from("products")
       .select("name, current_stock, min_stock_level")
       .eq("id", product_id)
       .single();
 
-    // Logika Kritis: Apakah stok SEKARANG <= Batas Minimum?
+    // B. Logika Kritis: Apakah stok SEKARANG <= Batas Minimum?
     if (product && product.current_stock <= product.min_stock_level) {
       const alertTitle = `🚨 Stok Kritis: ${product.name}`;
       const alertMessage = `Stok tersisa ${product.current_stock} unit (Min: ${product.min_stock_level}). Segera restock!`;
 
-      // A. KIRIM NOTIFIKASI KE NAVBAR (DATABASE)
-      // Ini yang bikin lonceng bunyi
-      await supabase.from("notifications").insert({
-        user_id: user.id, // Kirim notif ke user yang sedang login (bisa diubah ke admin id)
-        title: alertTitle,
-        message: alertMessage,
-        is_read: false,
-      });
+      // C. Cari SIAPA SAJA yang harus menerima notifikasi (Admin & Manager)
+      // Query ke tabel profiles untuk ambil user dengan role tertentu
+      const { data: recipients } = await supabase
+        .from("profiles")
+        .select("id, email")
+        .in("role", ["admin", "manager"]); // Staff gudang biasa mungkin tidak perlu email, sesuaikan jika perlu
 
-      // B. KIRIM EMAIL (RESEND)
-      try {
-        // PENTING: Untuk Free Tier Resend, 'to' HARUS email yang sama dengan pendaftaran Resend
-        // Ganti 'delivered@resend.dev' dengan email Anda yang terdaftar di Resend untuk testing
-        const emailResponse = await resend.emails.send({
-          from: "IMS Admin <onboarding@resend.dev>",
-          to: user.email!, // Pastikan user.email ini valid dan terdaftar di Resend (jika free tier)
-          subject: alertTitle,
-          react: StockAlertEmail({
-            productName: product.name,
-            currentStock: product.current_stock,
-            minStock: product.min_stock_level,
-            productUrl:
-              process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-          }),
-        });
+      if (recipients && recipients.length > 0) {
+        // --- 1. KIRIM NOTIFIKASI INTERNAL (NAVBAR) KE BANYAK USER ---
+        const notifications = recipients.map((recipient) => ({
+          user_id: recipient.id, // ID Admin/Manager
+          title: alertTitle,
+          message: alertMessage,
+          is_read: false,
+          created_at: new Date().toISOString(),
+        }));
 
-        console.log("Email Result:", emailResponse);
-      } catch (emailError) {
-        console.error("Gagal kirim email:", emailError);
+        // Insert Bulk (Banyak sekaligus)
+        const { error: notifError } = await supabase
+          .from("notifications")
+          .insert(notifications);
+
+        if (notifError) {
+          console.error("Gagal insert notifikasi DB:", notifError);
+        }
+
+        // --- 2. KIRIM EMAIL (RESEND) KE BANYAK USER ---
+        // Ambil list email yang valid
+        const emailTargets = recipients
+          .map((r) => r.email)
+          .filter((email) => email !== null && email !== "") as string[];
+
+        if (emailTargets.length > 0) {
+          try {
+            // PENTING UNTUK RESEND FREE TIER:
+            // Jika Anda masih Free Tier, Anda hanya bisa kirim ke email Anda sendiri.
+            // Gunakan logika di bawah ini:
+
+            // Opsi A: Production (Kirim ke semua target via BCC)
+            await resend.emails.send({
+              from: "IMS Admin <onboarding@resend.dev>",
+              to: "delivered@resend.dev", // Dummy receiver agar tidak error
+              bcc: emailTargets, // Kirim ke semua Admin & Manager via BCC
+              subject: alertTitle,
+              react: StockAlertEmail({
+                productName: product.name,
+                currentStock: product.current_stock,
+                minStock: product.min_stock_level,
+                productUrl: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/products`,
+              }),
+            });
+
+            console.log("Email alert terkirim ke:", emailTargets);
+          } catch (emailError) {
+            console.error("Gagal kirim email:", emailError);
+          }
+        }
       }
     }
   }
 
+  // Refresh halaman terkait
   revalidatePath("/dashboard/inventory");
   revalidatePath("/dashboard/products");
   revalidatePath("/dashboard");

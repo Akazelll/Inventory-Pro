@@ -13,7 +13,8 @@ import {
   Truck,
   Package2,
   PanelLeftClose, // Ikon untuk menutup sidebar
-  PanelLeftOpen, // Ikon untuk membuka sidebar
+  PanelLeftOpen,
+  Tags, // Ikon untuk membuka sidebar
 } from "lucide-react";
 import {
   Tooltip,
@@ -34,6 +35,12 @@ const sidebarItems = [
     title: "Produk",
     href: "/dashboard/products",
     icon: Package,
+    roles: ["admin", "manager", "staff"],
+  },
+  {
+    title: "Kategori",
+    href: "/dashboard/categories",
+    icon: Tags,
     roles: ["admin", "manager", "staff"],
   },
   {

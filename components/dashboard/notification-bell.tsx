@@ -15,18 +15,23 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatDistanceToNow } from "date-fns";
 import { id } from "date-fns/locale";
+import { cn } from "@/lib/utils"; // Pastikan import cn untuk styling kondisional
 
 export function NotificationBell() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const supabase = createClient();
+
+  // Hitung jumlah yang belum dibaca secara terpisah untuk Badge merah
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
 
   useEffect(() => {
     const fetchInitial = async () => {
       const { data } = await supabase
         .from("notifications")
         .select("*")
-        .eq("is_read", false)
-        .order("created_at", { ascending: false });
+        // HAPUS .eq("is_read", false) agar yang sudah dibaca tetap muncul
+        .order("created_at", { ascending: false })
+        .limit(20); // Batasi 20 notifikasi terakhir agar tidak terlalu banyak
       setNotifications(data || []);
     };
 
@@ -48,18 +53,30 @@ export function NotificationBell() {
     };
   }, [supabase]);
 
-  const markAsRead = async (id: string) => {
-    await supabase.from("notifications").update({ is_read: true }).eq("id", id);
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  const markAsRead = async (notificationId: string) => {
+    // 1. Update Database
+    await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("id", notificationId);
+
+    // 2. Update State Lokal (Gunakan map, JANGAN filter/hapus)
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n)),
+    );
   };
 
   const markAllAsRead = async () => {
-    if (notifications.length === 0) return;
+    if (unreadCount === 0) return;
+
+    // 1. Update Database
     await supabase
       .from("notifications")
       .update({ is_read: true })
       .eq("is_read", false);
-    setNotifications([]);
+
+    // 2. Update State Lokal (Set semua jadi true)
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
   };
 
   return (
@@ -71,9 +88,9 @@ export function NotificationBell() {
           className='relative hover:bg-muted transition-colors rounded-full'
         >
           <Bell className='h-5 w-5 text-muted-foreground' />
-          {notifications.length > 0 && (
+          {unreadCount > 0 && (
             <span className='absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white ring-2 ring-background'>
-              {notifications.length}
+              {unreadCount}
             </span>
           )}
         </Button>
@@ -87,7 +104,7 @@ export function NotificationBell() {
           <DropdownMenuLabel className='p-0 font-bold text-sm'>
             Notifikasi
           </DropdownMenuLabel>
-          {notifications.length > 0 && (
+          {unreadCount > 0 && (
             <Button
               variant='ghost'
               size='sm'
@@ -108,7 +125,7 @@ export function NotificationBell() {
                 <Inbox className='h-6 w-6 text-muted-foreground/50' />
               </div>
               <p className='text-xs font-medium text-muted-foreground'>
-                Semua aman! Tidak ada stok kritis.
+                Belum ada riwayat notifikasi.
               </p>
             </div>
           ) : (
@@ -116,18 +133,58 @@ export function NotificationBell() {
               {notifications.map((n) => (
                 <DropdownMenuItem
                   key={n.id}
-                  onClick={() => markAsRead(n.id)}
-                  className='p-4 cursor-pointer focus:bg-muted/50 border-b border-muted/20 last:border-none items-start gap-3'
+                  onClick={() => {
+                    if (!n.is_read) markAsRead(n.id);
+                  }}
+                  className={cn(
+                    "p-4 cursor-pointer border-b border-muted/20 last:border-none items-start gap-3 transition-colors",
+                    // KONDISI STYLING:
+                    // Jika belum dibaca: Background agak merah muda (optional) atau putih bersih
+                    // Jika sudah dibaca: Background agak abu/muted
+                    !n.is_read ? "bg-background" : "bg-muted/10 opacity-70",
+                  )}
                 >
-                  <div className='mt-1 h-8 w-8 shrink-0 rounded-full bg-rose-50 flex items-center justify-center'>
-                    <AlertCircle className='h-4 w-4 text-rose-600' />
+                  <div
+                    className={cn(
+                      "mt-1 h-8 w-8 shrink-0 rounded-full flex items-center justify-center",
+                      !n.is_read ? "bg-rose-50" : "bg-gray-100",
+                    )}
+                  >
+                    <AlertCircle
+                      className={cn(
+                        "h-4 w-4",
+                        !n.is_read ? "text-rose-600" : "text-gray-400",
+                      )}
+                    />
                   </div>
-                  <div className='flex flex-col gap-1 overflow-hidden'>
-                    <p className='text-sm font-bold leading-none'>{n.title}</p>
-                    <p className='text-xs text-muted-foreground leading-snug line-clamp-2'>
+                  <div className='flex flex-col gap-1 overflow-hidden w-full'>
+                    <div className='flex justify-between items-start'>
+                      <p
+                        className={cn(
+                          "text-sm leading-none",
+                          // Teks Bold jika belum dibaca
+                          !n.is_read
+                            ? "font-bold text-foreground"
+                            : "font-medium text-muted-foreground",
+                        )}
+                      >
+                        {n.title}
+                      </p>
+                      {!n.is_read && (
+                        <span className='h-2 w-2 rounded-full bg-rose-500 shrink-0' />
+                      )}
+                    </div>
+                    <p
+                      className={cn(
+                        "text-xs leading-snug line-clamp-2",
+                        !n.is_read
+                          ? "text-muted-foreground"
+                          : "text-muted-foreground/70",
+                      )}
+                    >
                       {n.message}
                     </p>
-                    <span className='text-[10px] text-muted-foreground font-medium mt-1'>
+                    <span className='text-[10px] text-muted-foreground/50 font-medium mt-1'>
                       {formatDistanceToNow(new Date(n.created_at), {
                         addSuffix: true,
                         locale: id,
@@ -147,7 +204,7 @@ export function NotificationBell() {
             className='w-full text-[11px] h-8 font-medium text-muted-foreground'
             disabled
           >
-            Lihat semua pemberitahuan
+            Menampilkan 20 notifikasi terakhir
           </Button>
         </div>
       </DropdownMenuContent>
